@@ -1,0 +1,87 @@
+version: '3.9'
+
+services:
+    postgres:
+        image: postgres:17
+        container_name: postgres
+        restart: always
+        environment:
+            POSTGRES_DB: dashboard_db
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        ports:
+            - '5432:5432'
+
+    redis:
+        image: redis:7
+        container_name: redis
+        restart: always
+        ports:
+            - '6379:6379'
+
+    rabbitmq:
+        image: rabbitmq:3-management
+        container_name: rabbitmq
+        restart: always
+        ports:
+            - '5672:5672'
+            - '15672:15672'
+
+    api-service:
+        build:
+            context: ./backend/api_service
+            dockerfile: Dockerfile
+        container_name: api-service
+        restart: always
+        depends_on:
+            - postgres
+            - redis
+            - rabbitmq
+        environment:
+            POSTGRES_HOST: postgres
+            POSTGRES_DB: dashboard_db
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            REDIS_URL: redis://redis:6379/0
+            RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+            API_PREFIX: /api/v1
+        ports:
+            - '8000:8000'
+        command:
+            ['uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000']
+
+    worker-service:
+        build:
+            context: ./backend/api_service/worker_service
+            dockerfile: Dockerfile
+        container_name: worker-service
+        restart: always
+        depends_on:
+            - postgres
+            - redis
+            - rabbitmq
+        environment:
+            POSTGRES_HOST: postgres
+            POSTGRES_DB: dashboard_db
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            REDIS_URL: redis://redis:6379/0
+            RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+
+    frontend:
+        build:
+            context: ./frontend/Dashboard
+            dockerfile: Dockerfile
+        container_name: frontend
+        restart: always
+        depends_on:
+            - api-service
+        environment:
+            - VITE_API_URL=http://localhost:8000/api/v1
+        ports:
+            - '3000:3000'
+
+volumes:
+    postgres_data:
